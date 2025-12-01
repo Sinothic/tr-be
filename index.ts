@@ -401,6 +401,9 @@ io.on("connection", (socket) => {
     ({ roomId, success }: { roomId: string; success: boolean }) => {
       const room = gameManager.getRoom(roomId);
       if (room && room.submitMissionAction(socket.id, success)) {
+        // Notify all players that this player has submitted their action
+        io.to(roomId).emit("mission_action_submitted", { playerId: socket.id });
+
         // Check if all mission actions are in
         if (room.missionActions.size === room.selectedTeam.length) {
           const result = room.resolveMission();
