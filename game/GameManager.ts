@@ -3,9 +3,9 @@ import { Room } from "./Room";
 export class GameManager {
   rooms: Map<string, Room> = new Map();
 
-  createRoom(minPlayers?: number): Room {
+  createRoom(minPlayers?: number, expansions?: string[]): Room {
     const roomId = this.generateRoomId();
-    const room = new Room(roomId, minPlayers);
+    const room = new Room(roomId, minPlayers, expansions);
     this.rooms.set(roomId, room);
     return room;
   }

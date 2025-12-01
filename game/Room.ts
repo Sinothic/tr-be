@@ -3,14 +3,17 @@ export type GamePhase =
   | "TEAM_SELECTION"
   | "VOTE"
   | "MISSION"
+  | "ASSASSINATION"
   | "RESULTS"
   | "GAME_OVER";
 export type Role = "RESISTANCE" | "SPY";
+export type SpecialRole = "MERLIN" | "ASSASSIN" | null;
 
 export interface Player {
   id: string;
   nickname: string;
   role?: Role;
+  specialRole?: SpecialRole;
   isLeader: boolean;
 }
 
@@ -19,12 +22,14 @@ export class Room {
   players: Player[] = [];
   maxPlayers: number = 10;
   minPlayers: number = 5;
+  expansions: string[] = [];
 
   phase: GamePhase = "LOBBY";
   currentLeaderIndex: number = 0;
   currentMissionIndex: number = 0;
   failedMissions: number = 0;
   succeededMissions: number = 0;
+  assassinationTarget: string | null = null;
 
   // Mission configuration based on player count (standard Resistance rules)
   // [Players] => [Mission1, Mission2, Mission3, Mission4, Mission5] (Team sizes)
@@ -41,10 +46,13 @@ export class Room {
     10: [3, 4, 4, 5, 5],
   };
 
-  constructor(id: string, minPlayers?: number) {
+  constructor(id: string, minPlayers?: number, expansions?: string[]) {
     this.id = id;
     if (minPlayers !== undefined) {
       this.minPlayers = minPlayers;
+    }
+    if (expansions) {
+      this.expansions = expansions;
     }
   }
 
@@ -86,7 +94,30 @@ export class Room {
 
     shuffled.forEach((player, index) => {
       player.role = index < spyCount ? "SPY" : "RESISTANCE";
+      player.specialRole = null; // Initialize special role
     });
+
+    // Assign special roles if Merlin/Assassin expansion is active
+    if (this.expansions.includes('merlin-assassin')) {
+      this.assignSpecialRoles();
+    }
+  }
+
+  private assignSpecialRoles() {
+    const spies = this.players.filter(p => p.role === "SPY");
+    const resistance = this.players.filter(p => p.role === "RESISTANCE");
+
+    // Assign Merlin to a random Resistance player
+    if (resistance.length > 0) {
+      const merlinIndex = Math.floor(Math.random() * resistance.length);
+      resistance[merlinIndex].specialRole = "MERLIN";
+    }
+
+    // Assign Assassin to a random Spy
+    if (spies.length > 0) {
+      const assassinIndex = Math.floor(Math.random() * spies.length);
+      spies[assassinIndex].specialRole = "ASSASSIN";
+    }
   }
 
   private updateLeader() {
@@ -203,8 +234,16 @@ export class Room {
     }
 
     // Check win conditions
-    if (this.succeededMissions >= 3 || this.failedMissions >= 3) {
+    if (this.failedMissions >= 3) {
+      // Spies win
       this.phase = "GAME_OVER";
+    } else if (this.succeededMissions >= 3) {
+      // Resistance wins, but check for Merlin/Assassin expansion
+      if (this.expansions.includes('merlin-assassin')) {
+        this.phase = "ASSASSINATION";
+      } else {
+        this.phase = "GAME_OVER";
+      }
     } else {
       this.currentMissionIndex++;
       this.nextTurn();
@@ -212,5 +251,38 @@ export class Room {
 
     this.missionActions.clear();
     return { success, failCount };
+  }
+
+  handleAssassination(targetId: string): { success: boolean; merlinId: string | null } {
+    this.assassinationTarget = targetId;
+
+    // Find Merlin
+    const merlin = this.players.find(p => p.specialRole === "MERLIN");
+    const merlinId = merlin?.id || null;
+
+    // Check if Assassin guessed correctly
+    const success = targetId === merlinId;
+
+    this.phase = "GAME_OVER";
+
+    return { success, merlinId };
+  }
+
+  getWinner(): "RESISTANCE" | "SPY" | null {
+    if (this.phase !== "GAME_OVER") return null;
+
+    // If assassination happened and was successful, spies win
+    if (this.assassinationTarget) {
+      const merlin = this.players.find(p => p.specialRole === "MERLIN");
+      if (this.assassinationTarget === merlin?.id) {
+        return "SPY";
+      }
+    }
+
+    // Normal win conditions
+    if (this.succeededMissions >= 3) return "RESISTANCE";
+    if (this.failedMissions >= 3) return "SPY";
+
+    return null;
   }
 }

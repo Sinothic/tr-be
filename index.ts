@@ -68,47 +68,81 @@ const DEBUG_MIN_PLAYERS = process.env.DEBUG_MIN_PLAYERS
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  socket.on("create_room", (nickname: string) => {
-    const room = gameManager.createRoom(DEBUG_MIN_PLAYERS);
-    const player = room.addPlayer(socket.id, nickname);
-    socket.join(room.id);
-    socket.emit("room_created", {
-      roomId: room.id,
-      player,
-      minPlayers: room.minPlayers,
-    });
-    console.log(`Room created: ${room.id} by ${nickname}`);
-  });
-
-  // Debug endpoint: create room with custom minPlayers (e.g., for testing with 1-2 players)
   socket.on(
-    "create_room_debug",
-    ({ nickname, minPlayers }: { nickname: string; minPlayers: number }) => {
-      const room = gameManager.createRoom(minPlayers);
+    "create_room",
+    ({ nickname, expansions }: { nickname: string; expansions?: string[] }) => {
+      const room = gameManager.createRoom(DEBUG_MIN_PLAYERS, expansions);
       const player = room.addPlayer(socket.id, nickname);
       socket.join(room.id);
       socket.emit("room_created", {
         roomId: room.id,
         player,
         minPlayers: room.minPlayers,
+        expansions: room.expansions,
       });
       console.log(
-        `Debug room created: ${room.id} by ${nickname} (minPlayers: ${minPlayers})`
+        `Room created: ${room.id} by ${nickname} with expansions: ${
+          expansions?.join(", ") || "none"
+        }`
+      );
+    }
+  );
+
+  // Debug endpoint: create room with custom minPlayers (e.g., for testing with 1-2 players)
+  socket.on(
+    "create_room_debug",
+    ({
+      nickname,
+      minPlayers,
+      expansions,
+    }: {
+      nickname: string;
+      minPlayers: number;
+      expansions?: string[];
+    }) => {
+      const room = gameManager.createRoom(minPlayers, expansions);
+      const player = room.addPlayer(socket.id, nickname);
+      socket.join(room.id);
+      socket.emit("room_created", {
+        roomId: room.id,
+        player,
+        minPlayers: room.minPlayers,
+        expansions: room.expansions,
+      });
+      console.log(
+        `Debug room created: ${
+          room.id
+        } by ${nickname} (minPlayers: ${minPlayers}, expansions: ${
+          expansions?.join(", ") || "none"
+        })`
       );
 
       // Auto-start game if in debug mode (minPlayers < 5) and enough players (which is always true for minPlayers=1)
       if (room.minPlayers < 5 && room.players.length >= room.minPlayers) {
         setTimeout(() => {
           if (room.startGame()) {
-            // Send role info to each player privately
+            // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
+            const spiesList = room.players
+              .filter((p) => p.role === "SPY")
+              .map((p) => ({ id: p.id, nickname: p.nickname }));
+
             room.players.forEach((player) => {
-              const spies = room.players
-                .filter((p) => p.role === "SPY")
-                .map((p) => ({ id: p.id, nickname: p.nickname }));
-              io.to(player.id).emit("role_assigned", {
+              const payload: any = {
                 role: player.role,
-                spies: player.role === "SPY" ? spies : undefined,
-              });
+                specialRole: player.specialRole || null,
+              };
+
+              // MERLIN (a resistance special role) should see spies
+              if (player.specialRole === "MERLIN") {
+                payload.spies = spiesList;
+              }
+
+              // Spies should see other spies
+              if (player.role === "SPY") {
+                payload.spies = spiesList;
+              }
+
+              io.to(player.id).emit("role_assigned", payload);
             });
 
             // Broadcast game state to all players in room
@@ -183,15 +217,26 @@ io.on("connection", (socket) => {
           ) {
             setTimeout(() => {
               if (room.startGame()) {
-                // Send role info to each player privately
+                // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
+                const spiesList = room.players
+                  .filter((p) => p.role === "SPY")
+                  .map((p) => ({ id: p.id, nickname: p.nickname }));
+
                 room.players.forEach((player) => {
-                  const spies = room.players
-                    .filter((p) => p.role === "SPY")
-                    .map((p) => ({ id: p.id, nickname: p.nickname }));
-                  io.to(player.id).emit("role_assigned", {
+                  const payload: any = {
                     role: player.role,
-                    spies: player.role === "SPY" ? spies : undefined,
-                  });
+                    specialRole: player.specialRole || null,
+                  };
+
+                  if (player.specialRole === "MERLIN") {
+                    payload.spies = spiesList;
+                  }
+
+                  if (player.role === "SPY") {
+                    payload.spies = spiesList;
+                  }
+
+                  io.to(player.id).emit("role_assigned", payload);
                 });
 
                 // Broadcast game state to all players in room
@@ -222,15 +267,26 @@ io.on("connection", (socket) => {
   socket.on("start_game", (roomId: string) => {
     const room = gameManager.getRoom(roomId);
     if (room && room.startGame()) {
-      // Send role info to each player privately
+      // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
+      const spiesList = room.players
+        .filter((p) => p.role === "SPY")
+        .map((p) => ({ id: p.id, nickname: p.nickname }));
+
       room.players.forEach((player) => {
-        const spies = room.players
-          .filter((p) => p.role === "SPY")
-          .map((p) => ({ id: p.id, nickname: p.nickname }));
-        io.to(player.id).emit("role_assigned", {
+        const payload: any = {
           role: player.role,
-          spies: player.role === "SPY" ? spies : undefined,
-        });
+          specialRole: player.specialRole || null,
+        };
+
+        if (player.specialRole === "MERLIN") {
+          payload.spies = spiesList;
+        }
+
+        if (player.role === "SPY") {
+          payload.spies = spiesList;
+        }
+
+        io.to(player.id).emit("role_assigned", payload);
       });
 
       // Broadcast game state to all players in room
@@ -314,6 +370,7 @@ io.on("connection", (socket) => {
                     id: p.id,
                     nickname: p.nickname,
                     role: p.role,
+                    specialRole: p.specialRole || null,
                   })),
                 });
               } else {
@@ -361,6 +418,18 @@ io.on("connection", (socket) => {
               missionIndex: room.currentMissionIndex,
               missionSize: room.getCurrentMissionSize(),
             });
+          } else if (room.phase === "ASSASSINATION") {
+            // Start assassination phase
+            const assassin = room.players.find(
+              (p) => p.specialRole === "ASSASSIN"
+            );
+            io.to(roomId).emit("assassination_phase", {
+              assassinId: assassin?.id || null,
+              players: room.players.map((p) => ({
+                id: p.id,
+                nickname: p.nickname,
+              })),
+            });
           } else if (room.phase === "GAME_OVER") {
             // Game ended
             const resistanceWon = room.succeededMissions >= 3;
@@ -370,6 +439,7 @@ io.on("connection", (socket) => {
                 id: p.id,
                 nickname: p.nickname,
                 role: p.role,
+                specialRole: p.specialRole || null,
               })),
             });
           }
@@ -382,6 +452,51 @@ io.on("connection", (socket) => {
     console.log(`User disconnected: ${socket.id}`);
     // TODO: Handle player removal from room
   });
+
+  // Handle assassination event during ASSASSINATION phase
+  socket.on(
+    "assassinate",
+    ({ roomId, targetId }: { roomId: string; targetId: string }) => {
+      const room = gameManager.getRoom(roomId);
+      if (!room) return;
+      // Ensure only the assassin can perform this action
+      const assassin = room.players.find((p) => p.specialRole === "ASSASSIN");
+      if (!assassin || socket.id !== assassin.id) {
+        io.to(socket.id).emit("assassination_error", {
+          message: "Apenas o Assassino pode executar esta ação.",
+        });
+        return;
+      }
+
+      // Disallow self-assassination
+      if (targetId === assassin.id) {
+        io.to(socket.id).emit("assassination_error", {
+          message: "Você não pode se assassinar — humor negro detectado.",
+        });
+        return;
+      }
+
+      const result = room.handleAssassination(targetId);
+
+      io.to(roomId).emit("assassination_result", {
+        success: result.success,
+        merlinId: result.merlinId,
+        phase: room.phase,
+      });
+
+      // Emit final game_over with winner determined by room.getWinner()
+      const winner = room.getWinner();
+      io.to(roomId).emit("game_over", {
+        winner: winner,
+        players: room.players.map((p) => ({
+          id: p.id,
+          nickname: p.nickname,
+          role: p.role,
+          specialRole: p.specialRole || null,
+        })),
+      });
+    }
+  );
 });
 
 const PORT = process.env.PORT || 3000;
