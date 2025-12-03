@@ -335,17 +335,21 @@ io.on("connection", (socket) => {
 
         // Check if all votes are in
         if (room.votes.size === room.players.length) {
+          // Capture votes before tallying (which clears them)
+          const votesToReveal = Object.fromEntries(room.votes);
+
           const result = room.tallyVotes();
           console.log(
             `Vote result for room ${roomId}:`,
             result,
-            "voteRejections:",
-            room.voteRejections
+            "votes:",
+            votesToReveal
           );
 
           // Emit vote_result to clients so they can update their UI
           io.to(roomId).emit("vote_result", {
             ...result,
+            votes: votesToReveal,
             phase: room.phase,
             voteRejections: room.voteRejections,
           });
