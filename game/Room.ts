@@ -234,7 +234,11 @@ export class Room {
     return true;
   }
 
-  resolveMission(): { success: boolean; failCount: number } {
+  resolveMission(): {
+    success: boolean;
+    failCount: number;
+    votes: Map<string, boolean>;
+  } {
     let failCount = 0;
     this.missionActions.forEach((action) => {
       if (!action) failCount++;
@@ -248,13 +252,16 @@ export class Room {
       this.failedMissions++;
     }
 
+    const votes = new Map(this.missionActions);
+    this.missionActions.clear();
+
     // Check win conditions
     if (this.failedMissions >= 3) {
       // Spies win
       this.phase = "GAME_OVER";
     } else if (this.succeededMissions >= 3) {
       // Resistance wins, but check for Merlin/Assassin expansion
-      if (this.expansions.includes('merlin-assassin')) {
+      if (this.expansions.includes("merlin-assassin")) {
         this.phase = "ASSASSINATION";
       } else {
         this.phase = "GAME_OVER";
@@ -264,8 +271,7 @@ export class Room {
       this.nextTurn();
     }
 
-    this.missionActions.clear();
-    return { success, failCount };
+    return { success, failCount, votes };
   }
 
   handleAssassination(targetId: string): { success: boolean; merlinId: string | null } {

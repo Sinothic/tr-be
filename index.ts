@@ -417,6 +417,7 @@ io.on("connection", (socket) => {
           const result = room.resolveMission();
           io.to(roomId).emit("mission_result", {
             ...result,
+            votes: Object.fromEntries(result.votes), // Convert Map to object
             succeededMissions: room.succeededMissions,
             failedMissions: room.failedMissions,
             phase: room.phase,
