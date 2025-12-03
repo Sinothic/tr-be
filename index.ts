@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { GameManager } from "./game/GameManager";
+import { PLAYER_RECONNECT_TIMEOUT_SECONDS } from "./game/constants";
 
 const app = express();
 app.use(cors());
@@ -462,9 +463,7 @@ io.on("connection", (socket) => {
     }
   );
 
-  import { PLAYER_RECONNECT_TIMEOUT_SECONDS } from "./game/constants";
-
-// Track disconnect timeouts
+  // Track disconnect timeouts
   const disconnectTimeouts = new Map<string, NodeJS.Timeout>();
 
   socket.on("disconnect", () => {
