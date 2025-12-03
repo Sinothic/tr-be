@@ -10,7 +10,8 @@ export type Role = "RESISTANCE" | "SPY";
 export type SpecialRole = "MERLIN" | "ASSASSIN" | null;
 
 export interface Player {
-  id: string;
+  id: string; // socket.id (changes on reconnect)
+  playerId: string; // permanent UUID for this player
   nickname: string;
   role?: Role;
   specialRole?: SpecialRole;
@@ -56,9 +57,10 @@ export class Room {
     }
   }
 
-  addPlayer(id: string, nickname: string): Player {
+  addPlayer(id: string, nickname: string, playerId?: string): Player {
     const player: Player = {
       id,
+      playerId: playerId || id, // Use provided playerId or fallback to socket.id
       nickname,
       isLeader: false,
     };
@@ -72,6 +74,19 @@ export class Room {
 
   getPlayer(id: string) {
     return this.players.find((p) => p.id === id);
+  }
+
+  getPlayerByPlayerId(playerId: string) {
+    return this.players.find((p) => p.playerId === playerId);
+  }
+
+  reconnectPlayer(playerId: string, newSocketId: string): boolean {
+    const player = this.getPlayerByPlayerId(playerId);
+    if (player) {
+      player.id = newSocketId;
+      return true;
+    }
+    return false;
   }
 
   startGame() {
@@ -266,6 +281,78 @@ export class Room {
     this.phase = "GAME_OVER";
 
     return { success, merlinId };
+  }
+
+  getGameState(playerId: string) {
+    const player = this.getPlayerByPlayerId(playerId);
+    if (!player) return null;
+
+    // Build spy list for role info
+    const spiesList = this.players
+      .filter((p) => p.role === "SPY")
+      .map((p) => ({ id: p.id, nickname: p.nickname }));
+
+    // Determine if this player can see spies
+    let spiesVisible: any[] | undefined = undefined;
+    if (player.specialRole === "MERLIN" || player.role === "SPY") {
+      spiesVisible = spiesList;
+    }
+
+    // Check if player has voted in current phase
+    const hasVoted = this.votes.has(player.id);
+    const myVote = this.votes.get(player.id) || null;
+
+    // Check if player has submitted mission action
+    const hasSubmittedMissionAction = this.missionActions.has(player.id);
+    const myMissionAction = this.missionActions.get(player.id) || null;
+
+    // Get list of players who have voted (just IDs)
+    const votedPlayers = Array.from(this.votes.keys());
+
+    // Get list of players who have submitted mission actions
+    const missionActionsSubmitted = Array.from(this.missionActions.keys());
+
+    // Find assassin ID if in assassination phase
+    const assassin = this.players.find((p) => p.specialRole === "ASSASSIN");
+
+    return {
+      roomId: this.id,
+      player: {
+        id: player.id,
+        playerId: player.playerId,
+        nickname: player.nickname,
+        isLeader: player.isLeader,
+      },
+      minPlayers: this.minPlayers,
+      expansions: this.expansions,
+      gameStarted: this.phase !== "LOBBY",
+      phase: this.phase,
+      players: this.players.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        isLeader: p.isLeader,
+      })),
+      currentLeader: this.players[this.currentLeaderIndex],
+      missionIndex: this.currentMissionIndex,
+      missionSize: this.getCurrentMissionSize(),
+      selectedTeam: this.selectedTeam,
+      voteRejections: this.voteRejections,
+      succeededMissions: this.succeededMissions,
+      failedMissions: this.failedMissions,
+      gameWinner: this.getWinner(),
+      // Player-specific info
+      myRole: player.role,
+      specialRole: player.specialRole,
+      spies: spiesVisible,
+      hasVoted,
+      myVote,
+      votedPlayers,
+      hasSubmittedMissionAction,
+      myMissionAction,
+      missionActionsSubmitted,
+      assassinId: assassin?.id || null,
+      assassinationTarget: this.assassinationTarget,
+    };
   }
 
   getWinner(): "RESISTANCE" | "SPY" | null {

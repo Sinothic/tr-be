@@ -70,9 +70,9 @@ io.on("connection", (socket) => {
 
   socket.on(
     "create_room",
-    ({ nickname, expansions }: { nickname: string; expansions?: string[] }) => {
+    ({ nickname, expansions, playerId }: { nickname: string; expansions?: string[]; playerId?: string }) => {
       const room = gameManager.createRoom(DEBUG_MIN_PLAYERS, expansions);
-      const player = room.addPlayer(socket.id, nickname);
+      const player = room.addPlayer(socket.id, nickname, playerId);
       socket.join(room.id);
       socket.emit("room_created", {
         roomId: room.id,
@@ -81,8 +81,7 @@ io.on("connection", (socket) => {
         expansions: room.expansions,
       });
       console.log(
-        `Room created: ${room.id} by ${nickname} with expansions: ${
-          expansions?.join(", ") || "none"
+        `Room created: ${room.id} by ${nickname} (playerId: ${player.playerId}) with expansions: ${expansions?.join(", ") || "none"
         }`
       );
     }
@@ -95,13 +94,15 @@ io.on("connection", (socket) => {
       nickname,
       minPlayers,
       expansions,
+      playerId,
     }: {
       nickname: string;
       minPlayers: number;
       expansions?: string[];
+      playerId?: string;
     }) => {
       const room = gameManager.createRoom(minPlayers, expansions);
-      const player = room.addPlayer(socket.id, nickname);
+      const player = room.addPlayer(socket.id, nickname, playerId);
       socket.join(room.id);
       socket.emit("room_created", {
         roomId: room.id,
@@ -110,10 +111,8 @@ io.on("connection", (socket) => {
         expansions: room.expansions,
       });
       console.log(
-        `Debug room created: ${
-          room.id
-        } by ${nickname} (minPlayers: ${minPlayers}, expansions: ${
-          expansions?.join(", ") || "none"
+        `Debug room created: ${room.id
+        } by ${nickname} (playerId: ${player.playerId}, minPlayers: ${minPlayers}, expansions: ${expansions?.join(", ") || "none"
         })`
       );
 
@@ -168,34 +167,39 @@ io.on("connection", (socket) => {
 
   socket.on(
     "join_room",
-    ({ roomId, nickname }: { roomId: string; nickname: string }) => {
+    ({ roomId, nickname, playerId }: { roomId: string; nickname: string; playerId?: string }) => {
       const room = gameManager.getRoom(roomId);
       if (room) {
-        // Check if player with this nickname already exists
-        const existingPlayer = room.players.find(
-          (p) => p.nickname === nickname
-        );
+        let existingPlayer = null;
+
+        // First, try to find by playerId if provided
+        if (playerId) {
+          existingPlayer = room.getPlayerByPlayerId(playerId);
+        }
+
+        // If not found by playerId, try nickname (backward compatibility)
+        if (!existingPlayer) {
+          existingPlayer = room.players.find((p) => p.nickname === nickname);
+        }
 
         if (existingPlayer) {
           // Reconnect existing player with new socket ID
           existingPlayer.id = socket.id;
           socket.join(roomId);
 
-          // Send current room state to the reconnected player
-          socket.emit("joined_room", {
-            roomId,
-            player: existingPlayer,
-            minPlayers: room.minPlayers,
-          });
+          // Send full game state to the reconnected player
+          const gameState = room.getGameState(existingPlayer.playerId);
+          console.log(`Sending game_state_sync to ${nickname}, phase: ${gameState?.phase}`);
+          socket.emit("game_state_sync", gameState);
 
           // Notify all players about the reconnection
           io.to(roomId).emit("player_joined", { players: room.players });
           console.log(
-            `Player ${nickname} reconnected to room ${roomId} with new socket ${socket.id}`
+            `Player ${nickname} (playerId: ${existingPlayer.playerId}) reconnected to room ${roomId} with new socket ${socket.id}`
           );
         } else {
           // New player joining
-          const player = room.addPlayer(socket.id, nickname);
+          const player = room.addPlayer(socket.id, nickname, playerId);
           socket.join(roomId);
 
           // Send room info to the new player
@@ -207,7 +211,7 @@ io.on("connection", (socket) => {
 
           // Notify all players about the new player
           io.to(roomId).emit("player_joined", { players: room.players });
-          console.log(`Player ${nickname} joined room ${roomId}`);
+          console.log(`Player ${nickname} (playerId: ${player.playerId}) joined room ${roomId}`);
 
           // Auto-start game if in debug mode (minPlayers < 5) and enough players
           if (
@@ -451,9 +455,68 @@ io.on("connection", (socket) => {
     }
   );
 
+  // Track disconnect timeouts
+  const disconnectTimeouts = new Map<string, NodeJS.Timeout>();
+
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
-    // TODO: Handle player removal from room
+
+    // Find which room this socket belongs to
+    let playerRoom: any = null;
+    let disconnectedPlayer: any = null;
+
+    gameManager.rooms.forEach((room) => {
+      const player = room.getPlayer(socket.id);
+      if (player) {
+        playerRoom = room;
+        disconnectedPlayer = player;
+      }
+    });
+
+    if (playerRoom && disconnectedPlayer) {
+      // Set a timeout to remove the player after 30 seconds
+      const timeout = setTimeout(() => {
+        // Check if player is still disconnected (not reconnected)
+        const currentPlayer = playerRoom.getPlayerByPlayerId(disconnectedPlayer.playerId);
+        if (currentPlayer && currentPlayer.id === socket.id) {
+          // Player never reconnected, remove them
+          playerRoom.removePlayer(socket.id);
+          io.to(playerRoom.id).emit("player_left", {
+            playerId: disconnectedPlayer.playerId,
+            players: playerRoom.players,
+          });
+          console.log(
+            `Player ${disconnectedPlayer.nickname} (playerId: ${disconnectedPlayer.playerId}) removed from room ${playerRoom.id} after disconnect timeout`
+          );
+        }
+        disconnectTimeouts.delete(socket.id);
+      }, 30000); // 30 seconds
+
+      disconnectTimeouts.set(socket.id, timeout);
+      console.log(
+        `Player ${disconnectedPlayer.nickname} has 30 seconds to reconnect to room ${playerRoom.id}`
+      );
+    }
+  });
+
+  // Get room players (for manual reconnection)
+  socket.on("get_room_players", (roomId: string) => {
+    const room = gameManager.getRoom(roomId);
+    if (room) {
+      const playersWithStatus = room.players.map((p) => ({
+        nickname: p.nickname,
+        isConnected: io.sockets.sockets.has(p.id),
+        // Don't send role/specialRole to avoid spoiling
+      }));
+      socket.emit("room_players_list", {
+        roomId,
+        players: playersWithStatus,
+        gameStarted: room.phase !== "LOBBY",
+      });
+      console.log(`Sent players list for room ${roomId}:`, playersWithStatus);
+    } else {
+      socket.emit("error", "Room not found");
+    }
   });
 
   // Handle assassination event during ASSASSINATION phase
