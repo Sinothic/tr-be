@@ -2,10 +2,14 @@
 
 export const PLAYER_RECONNECT_TIMEOUT_SECONDS = 600;
 
-export const MIN_PLAYERS = 5;
+export const MIN_PLAYERS = 1;
 export const MAX_PLAYERS = 20;
 
 export const SPY_COUNT: Record<number, number> = {
+  1: 0,
+  2: 1,
+  3: 1,
+  4: 1,
   5: 2,
   6: 2,
   7: 3,
@@ -25,6 +29,10 @@ export const SPY_COUNT: Record<number, number> = {
 };
 
 export const MISSION_CONFIG: Record<number, number[]> = {
+  1: [1, 1, 1, 1, 1],
+  2: [1, 2, 1, 2, 2],
+  3: [2, 2, 2, 2, 2],
+  4: [2, 2, 2, 3, 3],
   5: [2, 3, 2, 3, 3],
   6: [2, 3, 4, 3, 4],
   7: [2, 3, 3, 4, 4],
