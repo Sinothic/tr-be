@@ -1,3 +1,13 @@
+import {
+  MIN_PLAYERS,
+  MAX_PLAYERS,
+  SPY_COUNT,
+  MISSION_CONFIG,
+  MAX_REJECTIONS,
+  MISSIONS_TO_SUCCEED,
+  MISSIONS_TO_FAIL,
+} from "./constants";
+
 export type GamePhase =
   | "LOBBY"
   | "TEAM_SELECTION"
@@ -21,8 +31,8 @@ export interface Player {
 export class Room {
   id: string;
   players: Player[] = [];
-  maxPlayers: number = 10;
-  minPlayers: number = 5;
+  maxPlayers: number = MAX_PLAYERS;
+  minPlayers: number = MIN_PLAYERS;
   expansions: string[] = [];
 
   phase: GamePhase = "LOBBY";
@@ -34,18 +44,7 @@ export class Room {
 
   // Mission configuration based on player count (standard Resistance rules)
   // [Players] => [Mission1, Mission2, Mission3, Mission4, Mission5] (Team sizes)
-  private missionConfig: Record<number, number[]> = {
-    1: [1, 1, 1, 1, 1], // Debug mode
-    2: [1, 1, 1, 2, 2], // Debug mode
-    3: [2, 2, 2, 2, 3], // Debug mode
-    4: [2, 2, 2, 3, 3], // Debug mode
-    5: [2, 3, 2, 3, 3],
-    6: [2, 3, 4, 3, 4],
-    7: [2, 3, 3, 4, 4],
-    8: [3, 4, 4, 5, 5],
-    9: [3, 4, 4, 5, 5],
-    10: [3, 4, 4, 5, 5],
-  };
+  private missionConfig: Record<number, number[]> = MISSION_CONFIG;
 
   constructor(id: string, minPlayers?: number, expansions?: string[]) {
     this.id = id;
@@ -102,8 +101,7 @@ export class Room {
 
   private assignRoles() {
     const playerCount = this.players.length;
-    let spyCount = Math.ceil(playerCount / 3);
-    if (playerCount === 5) spyCount = 2; // Special case for 5 players (usually 2 spies)
+    const spyCount = SPY_COUNT[playerCount] || Math.ceil(playerCount / 3); // Fallback for unsupported player counts
 
     const shuffled = [...this.players].sort(() => 0.5 - Math.random());
 
@@ -113,14 +111,14 @@ export class Room {
     });
 
     // Assign special roles if Merlin/Assassin expansion is active
-    if (this.expansions.includes('merlin-assassin')) {
+    if (this.expansions.includes("merlin-assassin")) {
       this.assignSpecialRoles();
     }
   }
 
   private assignSpecialRoles() {
-    const spies = this.players.filter(p => p.role === "SPY");
-    const resistance = this.players.filter(p => p.role === "RESISTANCE");
+    const spies = this.players.filter((p) => p.role === "SPY");
+    const resistance = this.players.filter((p) => p.role === "RESISTANCE");
 
     // Assign Merlin to a random Resistance player
     if (resistance.length > 0) {
@@ -201,14 +199,14 @@ export class Room {
     if (!approved) {
       this.voteRejections++;
 
-      if (this.voteRejections >= 5) {
-        // After 5 rejected proposals, count as a failed mission (but do not end the game immediately)
+      if (this.voteRejections >= MAX_REJECTIONS) {
+        // After MAX_REJECTIONS rejected proposals, count as a failed mission (but do not end the game immediately)
         this.failedMissions++;
         penaltyApplied = true;
         this.voteRejections = 0; // reset rejection counter after applying the penalty
 
         // Advance mission index and check for game end
-        if (this.succeededMissions >= 3 || this.failedMissions >= 3) {
+        if (this.succeededMissions >= MISSIONS_TO_SUCCEED || this.failedMissions >= MISSIONS_TO_FAIL) {
           this.phase = "GAME_OVER";
         } else {
           this.currentMissionIndex++;
@@ -248,7 +246,8 @@ export class Room {
 
     if (success) {
       this.succeededMissions++;
-    } else {
+    }
+    else {
       this.failedMissions++;
     }
 
@@ -256,10 +255,10 @@ export class Room {
     this.missionActions.clear();
 
     // Check win conditions
-    if (this.failedMissions >= 3) {
+    if (this.failedMissions >= MISSIONS_TO_FAIL) {
       // Spies win
       this.phase = "GAME_OVER";
-    } else if (this.succeededMissions >= 3) {
+    } else if (this.succeededMissions >= MISSIONS_TO_SUCCEED) {
       // Resistance wins, but check for Merlin/Assassin expansion
       if (this.expansions.includes("merlin-assassin")) {
         this.phase = "ASSASSINATION";
@@ -373,8 +372,8 @@ export class Room {
     }
 
     // Normal win conditions
-    if (this.succeededMissions >= 3) return "RESISTANCE";
-    if (this.failedMissions >= 3) return "SPY";
+    if (this.succeededMissions >= MISSIONS_TO_SUCCEED) return "RESISTANCE";
+    if (this.failedMissions >= MISSIONS_TO_FAIL) return "SPY";
 
     return null;
   }

@@ -117,51 +117,52 @@ io.on("connection", (socket) => {
       );
 
       // Auto-start game if in debug mode (minPlayers < 5) and enough players (which is always true for minPlayers=1)
-      if (room.minPlayers < 5 && room.players.length >= room.minPlayers) {
-        setTimeout(() => {
-          if (room.startGame()) {
-            // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
-            const spiesList = room.players
-              .filter((p) => p.role === "SPY")
-              .map((p) => ({ id: p.id, nickname: p.nickname }));
+      // Removed auto-start logic as per user request. Game will require manual start.
+      // if (room.minPlayers < 5 && room.players.length >= room.minPlayers) {
+      //   setTimeout(() => {
+      //     if (room.startGame()) {
+      //       // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
+      //       const spiesList = room.players
+      //         .filter((p) => p.role === "SPY")
+      //         .map((p) => ({ id: p.id, nickname: p.nickname }));
 
-            room.players.forEach((player) => {
-              const payload: any = {
-                role: player.role,
-                specialRole: player.specialRole || null,
-              };
+      //       room.players.forEach((player) => {
+      //         const payload: any = {
+      //           role: player.role,
+      //           specialRole: player.specialRole || null,
+      //         };
 
-              // MERLIN (a resistance special role) should see spies
-              if (player.specialRole === "MERLIN") {
-                payload.spies = spiesList;
-              }
+      //         // MERLIN (a resistance special role) should see spies
+      //         if (player.specialRole === "MERLIN") {
+      //           payload.spies = spiesList;
+      //         }
 
-              // Spies should see other spies
-              if (player.role === "SPY") {
-                payload.spies = spiesList;
-              }
+      //         // Spies should see other spies
+      //         if (player.role === "SPY") {
+      //           payload.spies = spiesList;
+      //         }
 
-              io.to(player.id).emit("role_assigned", payload);
-            });
+      //         io.to(player.id).emit("role_assigned", payload);
+      //       });
 
-            // Broadcast game state to all players in room
-            io.to(room.id).emit("game_started", {
-              phase: room.phase,
-              currentLeader: room.players[room.currentLeaderIndex],
-              missionIndex: room.currentMissionIndex,
-              missionSize: room.getCurrentMissionSize(),
-              players: room.players.map((p) => ({
-                id: p.id,
-                nickname: p.nickname,
-                isLeader: p.isLeader,
-              })),
-            });
-            console.log(
-              `Game auto-started in debug room ${room.id} with ${room.players.length} players`
-            );
-          }
-        }, 2000); // Increased delay to ensure client navigation is complete
-      }
+      //       // Broadcast game state to all players in room
+      //       io.to(room.id).emit("game_started", {
+      //         phase: room.phase,
+      //         currentLeader: room.players[room.currentLeaderIndex],
+      //         missionIndex: room.currentMissionIndex,
+      //         missionSize: room.getCurrentMissionSize(),
+      //         players: room.players.map((p) => ({
+      //           id: p.id,
+      //           nickname: p.nickname,
+      //           isLeader: p.isLeader,
+      //         })),
+      //       });
+      //       console.log(
+      //         `Game auto-started in debug room ${room.id} with ${room.players.length} players`
+      //       );
+      //     }
+      //   }, 2000); // Increased delay to ensure client navigation is complete
+      // }
     }
   );
 
@@ -214,53 +215,54 @@ io.on("connection", (socket) => {
           console.log(`Player ${nickname} (playerId: ${player.playerId}) joined room ${roomId}`);
 
           // Auto-start game if in debug mode (minPlayers < 5) and enough players
-          if (
-            room.minPlayers < 5 &&
-            room.players.length >= room.minPlayers &&
-            room.phase === "LOBBY"
-          ) {
-            setTimeout(() => {
-              if (room.startGame()) {
-                // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
-                const spiesList = room.players
-                  .filter((p) => p.role === "SPY")
-                  .map((p) => ({ id: p.id, nickname: p.nickname }));
+          // Removed auto-start logic as per user request. Game will require manual start.
+          // if (
+          //   room.minPlayers < 5 &&
+          //   room.players.length >= room.minPlayers &&
+          //   room.phase === "LOBBY"
+          // ) {
+          //   setTimeout(() => {
+          //     if (room.startGame()) {
+          //       // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
+          //       const spiesList = room.players
+          //         .filter((p) => p.role === "SPY")
+          //         .map((p) => ({ id: p.id, nickname: p.nickname }));
 
-                room.players.forEach((player) => {
-                  const payload: any = {
-                    role: player.role,
-                    specialRole: player.specialRole || null,
-                  };
+          //       room.players.forEach((player) => {
+          //         const payload: any = {
+          //           role: player.role,
+          //           specialRole: player.specialRole || null,
+          //         };
 
-                  if (player.specialRole === "MERLIN") {
-                    payload.spies = spiesList;
-                  }
+          //         if (player.specialRole === "MERLIN") {
+          //           payload.spies = spiesList;
+          //         }
 
-                  if (player.role === "SPY") {
-                    payload.spies = spiesList;
-                  }
+          //         if (player.role === "SPY") {
+          //           payload.spies = spiesList;
+          //         }
 
-                  io.to(player.id).emit("role_assigned", payload);
-                });
+          //         io.to(player.id).emit("role_assigned", payload);
+          //       });
 
-                // Broadcast game state to all players in room
-                io.to(roomId).emit("game_started", {
-                  phase: room.phase,
-                  currentLeader: room.players[room.currentLeaderIndex],
-                  missionIndex: room.currentMissionIndex,
-                  missionSize: room.getCurrentMissionSize(),
-                  players: room.players.map((p) => ({
-                    id: p.id,
-                    nickname: p.nickname,
-                    isLeader: p.isLeader,
-                  })),
-                });
-                console.log(
-                  `Game auto-started in debug room ${roomId} with ${room.players.length} players`
-                );
-              }
-            }, 1000); // Small delay to ensure all clients are ready
-          }
+          //       // Broadcast game state to all players in room
+          //       io.to(roomId).emit("game_started", {
+          //         phase: room.phase,
+          //         currentLeader: room.players[room.currentLeaderIndex],
+          //         missionIndex: room.currentMissionIndex,
+          //         missionSize: room.getCurrentMissionSize(),
+          //         players: room.players.map((p) => ({
+          //           id: p.id,
+          //           nickname: p.nickname,
+          //           isLeader: p.isLeader,
+          //         })),
+          //       });
+          //       console.log(
+          //         `Game auto-started in debug room ${roomId} with ${room.players.length} players`
+          //       );
+          //     }
+          //   }, 1000); // Small delay to ensure all clients are ready
+          // }
         }
       } else {
         socket.emit("error", "Room not found");
@@ -460,7 +462,9 @@ io.on("connection", (socket) => {
     }
   );
 
-  // Track disconnect timeouts
+  import { PLAYER_RECONNECT_TIMEOUT_SECONDS } from "./game/constants";
+
+// Track disconnect timeouts
   const disconnectTimeouts = new Map<string, NodeJS.Timeout>();
 
   socket.on("disconnect", () => {
@@ -479,7 +483,7 @@ io.on("connection", (socket) => {
     });
 
     if (playerRoom && disconnectedPlayer) {
-      // Set a timeout to remove the player after 30 seconds
+      // Set a timeout to remove the player after PLAYER_RECONNECT_TIMEOUT_SECONDS
       const timeout = setTimeout(() => {
         // Check if player is still disconnected (not reconnected)
         const currentPlayer = playerRoom.getPlayerByPlayerId(disconnectedPlayer.playerId);
@@ -495,7 +499,7 @@ io.on("connection", (socket) => {
           );
         }
         disconnectTimeouts.delete(socket.id);
-      }, 30000); // 30 seconds
+      }, PLAYER_RECONNECT_TIMEOUT_SECONDS * 1000); // Convert seconds to milliseconds
 
       disconnectTimeouts.set(socket.id, timeout);
       console.log(
