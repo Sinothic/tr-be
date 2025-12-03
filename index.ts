@@ -12,7 +12,7 @@ const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin (like mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
-    
+
     // Explicitly allow ngrok domains and localhost
     const ngrokPatterns = [
       /^https?:\/\/.*\.ngrok\.io$/,
@@ -21,10 +21,10 @@ const corsOptions = {
       /^http:\/\/localhost(:\d+)?$/,
       /^http:\/\/127\.0\.0\.1(:\d+)?$/,
     ];
-    
+
     // Check if origin matches ngrok or localhost patterns
     const isNgrokOrLocalhost = ngrokPatterns.some(pattern => pattern.test(origin));
-    
+
     // Allow ngrok, localhost, and all other origins for flexibility
     callback(null, true);
   },
@@ -83,7 +83,7 @@ const socketCorsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin
     if (!origin) return callback(null, true);
-    
+
     // Explicitly allow ngrok domains and localhost
     // Also allow all other origins for development flexibility
     callback(null, true);
@@ -592,6 +592,7 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("assassination_result", {
         success: result.success,
         merlinId: result.merlinId,
+        targetId, // Include targetId so all clients know who was picked
         phase: room.phase,
       });
 
