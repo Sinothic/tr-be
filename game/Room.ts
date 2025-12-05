@@ -7,6 +7,7 @@ import {
   MISSIONS_TO_SUCCEED,
   MISSIONS_TO_FAIL,
 } from "./constants";
+import { HookManager } from "./hooks/HookManager";
 
 export type GamePhase =
   | "LOBBY"
@@ -45,9 +46,11 @@ export class Room {
   // Mission configuration based on player count (standard Resistance rules)
   // [Players] => [Mission1, Mission2, Mission3, Mission4, Mission5] (Team sizes)
   private missionConfig: Record<number, number[]> = MISSION_CONFIG;
+  private hookManager: HookManager;
 
-  constructor(id: string, minPlayers?: number, expansions?: string[]) {
+  constructor(id: string, minPlayers?: number, expansions?: string[], hookManager?: HookManager) {
     this.id = id;
+    this.hookManager = hookManager || new HookManager();
     if (minPlayers !== undefined) {
       this.minPlayers = minPlayers;
     }
@@ -88,8 +91,11 @@ export class Room {
     return false;
   }
 
-  startGame() {
+  async startGame() {
     if (this.players.length < this.minPlayers) return false;
+
+    // Trigger game:start hook before any game initialization
+    await this.hookManager.trigger('game:start', { room: this });
 
     this.assignRoles();
     this.phase = "TEAM_SELECTION";
@@ -99,7 +105,7 @@ export class Room {
     return true;
   }
 
-  private assignRoles() {
+  private async assignRoles() {
     const playerCount = this.players.length;
     const spyCount = SPY_COUNT[playerCount] || Math.ceil(playerCount / 3); // Fallback for unsupported player counts
 
@@ -110,6 +116,10 @@ export class Room {
       player.specialRole = null; // Initialize special role
     });
 
+    // Trigger roles:assign hook to allow expansions to assign special roles
+    await this.hookManager.trigger('roles:assign', { room: this, players: this.players });
+
+    // OLD CODE: Kept for reference, will be moved to expansion
     // Assign special roles if Merlin/Assassin expansion is active
     if (this.expansions.includes("merlin-assassin")) {
       this.assignSpecialRoles();
@@ -232,11 +242,11 @@ export class Room {
     return true;
   }
 
-  resolveMission(): {
+  async resolveMission(): Promise<{
     success: boolean;
     failCount: number;
     votes: Map<string, boolean>;
-  } {
+  }> {
     let failCount = 0;
     this.missionActions.forEach((action) => {
       if (!action) failCount++;
@@ -254,19 +264,43 @@ export class Room {
     const votes = new Map(this.missionActions);
     this.missionActions.clear();
 
+    // Determine next phase based on win conditions
+    let nextPhase: GamePhase = "TEAM_SELECTION";
+
     // Check win conditions
     if (this.failedMissions >= MISSIONS_TO_FAIL) {
       // Spies win
-      this.phase = "GAME_OVER";
+      nextPhase = "GAME_OVER";
     } else if (this.succeededMissions >= MISSIONS_TO_SUCCEED) {
-      // Resistance wins, but check for Merlin/Assassin expansion
+      // Resistance wins (base game)
+      nextPhase = "GAME_OVER";
+
+      // OLD CODE: Kept for reference, will be moved to expansion
+      // Check for Merlin/Assassin expansion
       if (this.expansions.includes("merlin-assassin")) {
-        this.phase = "ASSASSINATION";
-      } else {
-        this.phase = "GAME_OVER";
+        nextPhase = "ASSASSINATION";
       }
     } else {
       this.currentMissionIndex++;
+      nextPhase = "TEAM_SELECTION";
+    }
+
+    // Trigger mission:resolve hook to allow expansions to modify phase
+    const hookResult = await this.hookManager.trigger('mission:resolve', {
+      room: this,
+      result: { success, failCount },
+      nextPhase
+    });
+
+    // Apply phase from hook if modified
+    if (hookResult.nextPhase) {
+      this.phase = hookResult.nextPhase as GamePhase;
+    } else {
+      this.phase = nextPhase;
+    }
+
+    // Handle next turn if continuing
+    if (this.phase === "TEAM_SELECTION") {
       this.nextTurn();
     }
 
@@ -288,7 +322,7 @@ export class Room {
     return { success, merlinId };
   }
 
-  getGameState(playerId: string) {
+  async getGameState(playerId: string) {
     const player = this.getPlayerByPlayerId(playerId);
     if (!player) return null;
 
@@ -320,7 +354,7 @@ export class Room {
     // Find assassin ID if in assassination phase
     const assassin = this.players.find((p) => p.specialRole === "ASSASSIN");
 
-    return {
+    const state = {
       roomId: this.id,
       player: {
         id: player.id,
@@ -358,6 +392,15 @@ export class Room {
       assassinId: assassin?.id || null,
       assassinationTarget: this.assassinationTarget,
     };
+
+    // Trigger state:sync hook to allow expansions to add custom state
+    const hookResult = await this.hookManager.trigger('state:sync', {
+      room: this,
+      player,
+      state
+    });
+
+    return hookResult.state || state;
   }
 
   getWinner(): "RESISTANCE" | "SPY" | null {

@@ -206,7 +206,7 @@ io.on("connection", (socket) => {
 
   socket.on(
     "join_room",
-    ({ roomId, nickname, playerId }: { roomId: string; nickname: string; playerId?: string }) => {
+    async ({ roomId, nickname, playerId }: { roomId: string; nickname: string; playerId?: string }) => {
       const room = gameManager.getRoom(roomId);
       if (room) {
         let existingPlayer = null;
@@ -227,7 +227,7 @@ io.on("connection", (socket) => {
           socket.join(roomId);
 
           // Send full game state to the reconnected player
-          const gameState = room.getGameState(existingPlayer.playerId);
+          const gameState = await room.getGameState(existingPlayer.playerId);
           console.log(`Sending game_state_sync to ${nickname}, phase: ${gameState?.phase}`);
           socket.emit("game_state_sync", gameState);
 
@@ -308,9 +308,9 @@ io.on("connection", (socket) => {
     }
   );
 
-  socket.on("start_game", (roomId: string) => {
+  socket.on("start_game", async (roomId: string) => {
     const room = gameManager.getRoom(roomId);
-    if (room && room.startGame()) {
+    if (room && await room.startGame()) {
       // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
       const spiesList = room.players
         .filter((p) => p.role === "SPY")
@@ -446,7 +446,7 @@ io.on("connection", (socket) => {
 
   socket.on(
     "submit_mission_action",
-    ({ roomId, success }: { roomId: string; success: boolean }) => {
+    async ({ roomId, success }: { roomId: string; success: boolean }) => {
       const room = gameManager.getRoom(roomId);
       if (room && room.submitMissionAction(socket.id, success)) {
         // Notify all players that this player has submitted their action
@@ -454,7 +454,7 @@ io.on("connection", (socket) => {
 
         // Check if all mission actions are in
         if (room.missionActions.size === room.selectedTeam.length) {
-          const result = room.resolveMission();
+          const result = await room.resolveMission();
           io.to(roomId).emit("mission_result", {
             ...result,
             votes: Object.fromEntries(result.votes), // Convert Map to object
