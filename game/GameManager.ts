@@ -1,39 +1,40 @@
 import { Room } from "./Room";
 import { HookManager } from "./hooks/HookManager";
-import { ExpansionRegistry } from "./expansions/types";
 import { AVAILABLE_EXPANSIONS } from "./expansions";
 
 export class GameManager {
   rooms: Map<string, Room> = new Map();
-  hookManager: HookManager = new HookManager();
-  expansionRegistry: ExpansionRegistry = new ExpansionRegistry();
-
-  constructor() {
-    // Register all available expansions
-    Object.values(AVAILABLE_EXPANSIONS).forEach(expansion => {
-      this.expansionRegistry.register(expansion);
-    });
-  }
 
   createRoom(minPlayers?: number, expansions?: string[]): Room {
     const roomId = this.generateRoomId();
-    const room = new Room(roomId, minPlayers, expansions, this.hookManager);
-    this.rooms.set(roomId, room);
 
-    // Install expansions for this room
+    // Create a new HookManager for this room (isolated from other rooms)
+    const roomHookManager = new HookManager();
+
+    // Install expansions for this room BEFORE creating the room
     if (expansions && expansions.length > 0) {
-      this.installExpansions(expansions);
+      this.installExpansions(expansions, roomHookManager);
     }
+
+    const room = new Room(roomId, minPlayers, expansions, roomHookManager);
+    this.rooms.set(roomId, room);
 
     return room;
   }
 
   /**
-   * Install expansions for a room based on expansion IDs
+   * Install expansions directly on a specific HookManager
+   * Bypasses ExpansionRegistry to avoid global state issues
    */
-  installExpansions(expansionIds: string[], io?: any): void {
+  installExpansions(expansionIds: string[], hookManager: HookManager, io?: any): void {
     expansionIds.forEach(id => {
-      this.expansionRegistry.install(id, this.hookManager, io);
+      const expansion = AVAILABLE_EXPANSIONS[id as keyof typeof AVAILABLE_EXPANSIONS];
+      if (expansion) {
+        expansion.install(hookManager, io);
+        console.log(`[GameManager] Installed expansion ${expansion.name} for room`);
+      } else {
+        console.warn(`[GameManager] Expansion not found: ${id}`);
+      }
     });
   }
 

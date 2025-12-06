@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import { GameManager } from "./game/GameManager";
 import { PLAYER_RECONNECT_TIMEOUT_SECONDS } from "./game/constants";
+import { AVAILABLE_EXPANSIONS } from "./game/expansions";
 
 const app = express();
 
@@ -32,6 +33,17 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// API endpoint to get available expansions
+app.get("/api/expansions", (req, res) => {
+  const expansions = Object.entries(AVAILABLE_EXPANSIONS).map(([id, expansion]) => ({
+    id: expansion.id,
+    name: expansion.name,
+    version: expansion.version,
+  }));
+
+  res.json(expansions);
+});
 
 // Debug endpoint to fill room with bots
 app.post("/debug/fill-room/:roomId", (req, res) => {
@@ -246,6 +258,7 @@ io.on("connection", (socket) => {
             roomId,
             player,
             minPlayers: room.minPlayers,
+            expansions: room.expansions,
           });
 
           // Notify all players about the new player
@@ -329,6 +342,12 @@ io.on("connection", (socket) => {
         if (player.role === "SPY") {
           payload.spies = spiesList;
         }
+
+        console.log(`[Server] Sending role_assigned to ${player.nickname} (${player.role}):`, {
+          role: payload.role,
+          specialRole: payload.specialRole,
+          spies: payload.spies ? `${payload.spies.length} spies` : 'undefined'
+        });
 
         io.to(player.id).emit("role_assigned", payload);
       });

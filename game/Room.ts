@@ -118,29 +118,6 @@ export class Room {
 
     // Trigger roles:assign hook to allow expansions to assign special roles
     await this.hookManager.trigger('roles:assign', { room: this, players: this.players });
-
-    // OLD CODE: Kept for reference, will be moved to expansion
-    // Assign special roles if Merlin/Assassin expansion is active
-    if (this.expansions.includes("merlin-assassin")) {
-      this.assignSpecialRoles();
-    }
-  }
-
-  private assignSpecialRoles() {
-    const spies = this.players.filter((p) => p.role === "SPY");
-    const resistance = this.players.filter((p) => p.role === "RESISTANCE");
-
-    // Assign Merlin to a random Resistance player
-    if (resistance.length > 0) {
-      const merlinIndex = Math.floor(Math.random() * resistance.length);
-      resistance[merlinIndex].specialRole = "MERLIN";
-    }
-
-    // Assign Assassin to a random Spy
-    if (spies.length > 0) {
-      const assassinIndex = Math.floor(Math.random() * spies.length);
-      spies[assassinIndex].specialRole = "ASSASSIN";
-    }
   }
 
   private updateLeader() {
@@ -274,12 +251,6 @@ export class Room {
     } else if (this.succeededMissions >= MISSIONS_TO_SUCCEED) {
       // Resistance wins (base game)
       nextPhase = "GAME_OVER";
-
-      // OLD CODE: Kept for reference, will be moved to expansion
-      // Check for Merlin/Assassin expansion
-      if (this.expansions.includes("merlin-assassin")) {
-        nextPhase = "ASSASSINATION";
-      }
     } else {
       this.currentMissionIndex++;
       nextPhase = "TEAM_SELECTION";
@@ -331,9 +302,10 @@ export class Room {
       .filter((p) => p.role === "SPY")
       .map((p) => ({ id: p.id, nickname: p.nickname }));
 
-    // Determine if this player can see spies
+    // Spy visibility is now controlled by expansions via state:sync hook
+    // By default, spies can see each other (base game behavior)
     let spiesVisible: any[] | undefined = undefined;
-    if (player.specialRole === "MERLIN" || player.role === "SPY") {
+    if (player.role === "SPY") {
       spiesVisible = spiesList;
     }
 
@@ -394,11 +366,13 @@ export class Room {
     };
 
     // Trigger state:sync hook to allow expansions to add custom state
+    console.log(`[Room] Before hook - spies for ${player.nickname}:`, state.spies ? 'visible' : 'hidden');
     const hookResult = await this.hookManager.trigger('state:sync', {
       room: this,
       player,
       state
     });
+    console.log(`[Room] After hook - spies for ${player.nickname}:`, hookResult.state.spies ? 'visible' : 'hidden');
 
     return hookResult.state || state;
   }

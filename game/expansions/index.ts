@@ -1,4 +1,5 @@
-import { MerlinAssassinExpansion } from './merlin-assassin';
+import { MerlinAssassinExpansion } from './merlin-assassin'
+import { BlindSpiesExpansion } from './blind-spies'
 
 /**
  * Central registry of all available expansions
@@ -7,9 +8,8 @@ import { MerlinAssassinExpansion } from './merlin-assassin';
 
 export const AVAILABLE_EXPANSIONS = {
     'merlin-assassin': MerlinAssassinExpansion,
-    // Future expansions will be added here
-    // 'plot-thickens': PlotThickensExpansion,
-};
+    'blind-spies': BlindSpiesExpansion,
+}
 
 /**
  * Get an expansion by ID
