@@ -140,28 +140,61 @@ export class Room {
     );
   }
 
-  // Team Selection
-  selectedTeam: string[] = [];
-  votes: Map<string, boolean> = new Map();
+  // INTERNAL STATE: Uses playerIds (UUIDs)
+  selectedTeam: string[] = []; // List of playerIds
+  votes: Map<string, boolean> = new Map(); // playerId -> boolean
   voteRejections: number = 0;
-  missionActions: Map<string, boolean> = new Map();
+  missionActions: Map<string, boolean> = new Map(); // playerId -> boolean
 
-  selectTeam(playerIds: string[]): boolean {
+  // Helper to convert socket IDs to playerIds for internal logic
+  private getPlayerIdFromSocket(socketId: string): string | undefined {
+    return this.getPlayer(socketId)?.playerId;
+  }
+
+  // Helper to convert internal playerIds back to socket IDs for client communication
+  private getSocketIdFromPlayerId(playerId: string): string | undefined {
+    return this.getPlayerByPlayerId(playerId)?.id;
+  }
+
+  // Helper for clients: Get selected team as Socket IDs
+  getSelectedTeamSocketIds(): string[] {
+    return this.selectedTeam
+      .map(pid => this.getSocketIdFromPlayerId(pid))
+      .filter((sid): sid is string => !!sid);
+  }
+
+  // Helper for clients: Get revealed votes using Socket IDs as keys
+  getRevealedVotes(): Record<string, boolean> {
+    const revealed: Record<string, boolean> = {};
+    this.votes.forEach((approve, playerId) => {
+      const socketId = this.getSocketIdFromPlayerId(playerId);
+      if (socketId) {
+        revealed[socketId] = approve;
+      }
+    });
+    return revealed;
+  }
+
+  selectTeam(socketIds: string[]): boolean {
     const requiredSize = this.getCurrentMissionSize();
-    if (playerIds.length !== requiredSize) return false;
+    if (socketIds.length !== requiredSize) return false;
 
     // Validate all players exist
-    const allValid = playerIds.every((id) =>
-      this.players.find((p) => p.id === id)
-    );
-    if (!allValid) return false;
+    const playerIds: string[] = [];
+    for (const sid of socketIds) {
+      const player = this.getPlayer(sid);
+      if (!player) return false;
+      playerIds.push(player.playerId);
+    }
 
     this.selectedTeam = playerIds;
     this.phase = "VOTE";
     return true;
   }
 
-  submitVote(playerId: string, approve: boolean) {
+  submitVote(socketId: string, approve: boolean) {
+    const playerId = this.getPlayerIdFromSocket(socketId);
+    if (!playerId) return;
     this.votes.set(playerId, approve);
   }
 
@@ -187,12 +220,11 @@ export class Room {
       this.voteRejections++;
 
       if (this.voteRejections >= MAX_REJECTIONS) {
-        // After MAX_REJECTIONS rejected proposals, count as a failed mission (but do not end the game immediately)
+        // After MAX_REJECTIONS rejected proposals, count as a failed mission
         this.failedMissions++;
         penaltyApplied = true;
-        this.voteRejections = 0; // reset rejection counter after applying the penalty
+        this.voteRejections = 0;
 
-        // Advance mission index and check for game end
         if (this.succeededMissions >= MISSIONS_TO_SUCCEED || this.failedMissions >= MISSIONS_TO_FAIL) {
           this.phase = "GAME_OVER";
         } else {
@@ -207,13 +239,20 @@ export class Room {
       this.voteRejections = 0;
     }
 
-    // Clear votes after tallying
+    // Capture votes before clearing, but we don't return them here directly
+    // typically index.ts accesses room.votes, but now that's internal UUIDs.
+    // index.ts should use room.getRevealedVotes().
+    const resultDetails = { approved, approveCount, rejectCount, penaltyApplied };
+
     this.votes.clear();
 
-    return { approved, approveCount, rejectCount, penaltyApplied };
+    return resultDetails;
   }
 
-  submitMissionAction(playerId: string, success: boolean) {
+  submitMissionAction(socketId: string, success: boolean) {
+    const playerId = this.getPlayerIdFromSocket(socketId);
+    if (!playerId) return false;
+
     if (!this.selectedTeam.includes(playerId)) return false;
     this.missionActions.set(playerId, success);
     return true;
@@ -222,7 +261,7 @@ export class Room {
   async resolveMission(): Promise<{
     success: boolean;
     failCount: number;
-    votes: Map<string, boolean>;
+    votes: Map<string, boolean>; // Returns socketID -> boolean for compatibility if needed
   }> {
     let failCount = 0;
     this.missionActions.forEach((action) => {
@@ -238,7 +277,13 @@ export class Room {
       this.failedMissions++;
     }
 
-    const votes = new Map(this.missionActions);
+    // Convert keys to Socket IDs for the return value
+    const votesSocketIds = new Map<string, boolean>();
+    this.missionActions.forEach((action, playerId) => {
+      const sid = this.getSocketIdFromPlayerId(playerId);
+      if (sid) votesSocketIds.set(sid, action);
+    });
+
     this.missionActions.clear();
 
     // Determine next phase based on win conditions
@@ -275,7 +320,7 @@ export class Room {
       this.nextTurn();
     }
 
-    return { success, failCount, votes };
+    return { success, failCount, votes: votesSocketIds };
   }
 
   handleAssassination(targetId: string): { success: boolean; merlinId: string | null } {
@@ -293,8 +338,8 @@ export class Room {
     return { success, merlinId };
   }
 
-  async getGameState(playerId: string) {
-    const player = this.getPlayerByPlayerId(playerId);
+  async getGameState(requestingPlayerId: string) {
+    const player = this.getPlayerByPlayerId(requestingPlayerId);
     if (!player) return null;
 
     // Build spy list for role info
@@ -303,25 +348,28 @@ export class Room {
       .map((p) => ({ id: p.id, nickname: p.nickname }));
 
     // Spy visibility is now controlled by expansions via state:sync hook
-    // By default, spies can see each other (base game behavior)
     let spiesVisible: any[] | undefined = undefined;
     if (player.role === "SPY") {
       spiesVisible = spiesList;
     }
 
-    // Check if player has voted in current phase
-    const hasVoted = this.votes.has(player.id);
-    const myVote = this.votes.get(player.id) || null;
+    // Check if player has voted in current phase (using UUID)
+    const hasVoted = this.votes.has(requestingPlayerId);
+    const myVote = this.votes.get(requestingPlayerId) || null;
 
-    // Check if player has submitted mission action
-    const hasSubmittedMissionAction = this.missionActions.has(player.id);
-    const myMissionAction = this.missionActions.get(player.id) || null;
+    // Check if player has submitted mission action (using UUID)
+    const hasSubmittedMissionAction = this.missionActions.has(requestingPlayerId);
+    const myMissionAction = this.missionActions.get(requestingPlayerId) || null;
 
-    // Get list of players who have voted (just IDs)
-    const votedPlayers = Array.from(this.votes.keys());
+    // Get list of players who have voted (map UUID -> SocketID for client)
+    const votedPlayers = Array.from(this.votes.keys())
+      .map(pid => this.getSocketIdFromPlayerId(pid))
+      .filter((sid): sid is string => !!sid);
 
-    // Get list of players who have submitted mission actions
-    const missionActionsSubmitted = Array.from(this.missionActions.keys());
+    // Get list of players who have submitted mission actions (map UUID -> SocketID for client)
+    const missionActionsSubmitted = Array.from(this.missionActions.keys())
+      .map(pid => this.getSocketIdFromPlayerId(pid))
+      .filter((sid): sid is string => !!sid);
 
     // Find assassin ID if in assassination phase
     const assassin = this.players.find((p) => p.specialRole === "ASSASSIN");
@@ -346,7 +394,7 @@ export class Room {
       currentLeader: this.players[this.currentLeaderIndex],
       missionIndex: this.currentMissionIndex,
       missionSize: this.getCurrentMissionSize(),
-      selectedTeam: this.selectedTeam,
+      selectedTeam: this.getSelectedTeamSocketIds(), // Map UUIDs to Socket IDs
       voteRejections: this.voteRejections,
       succeededMissions: this.succeededMissions,
       failedMissions: this.failedMissions,
@@ -366,13 +414,11 @@ export class Room {
     };
 
     // Trigger state:sync hook to allow expansions to add custom state
-    console.log(`[Room] Before hook - spies for ${player.nickname}:`, state.spies ? 'visible' : 'hidden');
     const hookResult = await this.hookManager.trigger('state:sync', {
       room: this,
       player,
       state
     });
-    console.log(`[Room] After hook - spies for ${player.nickname}:`, hookResult.state.spies ? 'visible' : 'hidden');
 
     return hookResult.state || state;
   }

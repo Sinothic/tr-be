@@ -395,7 +395,7 @@ io.on("connection", (socket) => {
         // Check if all votes are in
         if (room.votes.size === room.players.length) {
           // Capture votes before tallying (which clears them)
-          const votesToReveal = Object.fromEntries(room.votes);
+          const votesToReveal = room.getRevealedVotes();
 
           const result = room.tallyVotes();
           console.log(
