@@ -86,6 +86,56 @@ app.post("/debug/fill-room/:roomId", (req, res) => {
   });
 });
 
+// Test-only endpoint: Set role assignments for a room
+app.post('/debug/set-roles/:roomId', (req, res) => {
+  const { roomId } = req.params;
+  const { assignments } = req.body; // [{ playerId, role, specialRole }]
+  const room = gameManager.getRoom(roomId);
+
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+  if (!Array.isArray(assignments)) return res.status(400).json({ error: 'Invalid assignments' });
+
+  for (const a of assignments) {
+    const player = room.getPlayerByPlayerId(a.playerId);
+    if (player) {
+      if (a.role) player.role = a.role;
+      if (typeof a.specialRole !== 'undefined') player.specialRole = a.specialRole;
+    }
+  }
+
+  // Emit a state sync to all players so clients update
+  io.to(roomId).emit('debug_roles_set', { players: room.players.map(p => ({ id: p.id, playerId: p.playerId, nickname: p.nickname, role: p.role, specialRole: p.specialRole })) });
+
+  res.json({ message: 'Roles set', players: room.players });
+});
+
+// Test-only endpoint: Force mission counters / phase for a room
+app.post('/debug/set-outcome/:roomId', (req, res) => {
+  const { roomId } = req.params;
+  const { succeededMissions, failedMissions, phase, currentMissionIndex } = req.body;
+  const room = gameManager.getRoom(roomId);
+
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+
+  if (typeof succeededMissions === 'number') room.succeededMissions = succeededMissions;
+  if (typeof failedMissions === 'number') room.failedMissions = failedMissions;
+  if (typeof currentMissionIndex === 'number') room.currentMissionIndex = currentMissionIndex;
+  if (phase) room.phase = phase;
+
+  // If phase is GAME_OVER, emit game_over immediately
+  if (room.phase === 'GAME_OVER') {
+    const winner = room.getWinner();
+    io.to(roomId).emit('game_over', {
+      winner,
+      players: room.players.map((p) => ({ id: p.id, nickname: p.nickname, role: p.role, specialRole: p.specialRole || null })),
+    });
+  }
+
+  io.to(roomId).emit('debug_outcome_set', { succeededMissions: room.succeededMissions, failedMissions: room.failedMissions, phase: room.phase, currentMissionIndex: room.currentMissionIndex });
+
+  res.json({ message: 'Outcome set', succeededMissions: room.succeededMissions, failedMissions: room.failedMissions, phase: room.phase });
+});
+
 app.use(express.json());
 
 const httpServer = createServer(app);
