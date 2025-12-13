@@ -220,23 +220,17 @@ export class Room {
       this.voteRejections++;
 
       if (this.voteRejections >= MAX_REJECTIONS) {
-        // After MAX_REJECTIONS rejected proposals, count as a failed mission
-        this.failedMissions++;
+        // After MAX_REJECTIONS rejected proposals, Spies win immediately
+        this.failedMissions = MISSIONS_TO_FAIL; // Force spy win condition
+        this.phase = "GAME_OVER";
         penaltyApplied = true;
         this.voteRejections = 0;
-
-        if (this.succeededMissions >= MISSIONS_TO_SUCCEED || this.failedMissions >= MISSIONS_TO_FAIL) {
-          this.phase = "GAME_OVER";
-        } else {
-          this.currentMissionIndex++;
-          this.nextTurn();
-        }
       } else {
         this.nextTurn();
       }
     } else {
       this.phase = "MISSION";
-      this.voteRejections = 0;
+      // this.voteRejections = 0; // Cumulative rejections rule: do not reset!
     }
 
     // Capture votes before clearing, but we don't return them here directly
