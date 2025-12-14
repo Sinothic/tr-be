@@ -36,6 +36,11 @@ export class Room {
   minPlayers: number = MIN_PLAYERS;
   expansions: string[] = [];
 
+  // Timestamps for activity tracking
+  createdAt: number = Date.now();
+  lastActivityAt: number = Date.now();
+  loopStartAt: number | null = null;
+
   phase: GamePhase = "LOBBY";
   currentLeaderIndex: number = 0;
   currentMissionIndex: number = 0;
@@ -67,11 +72,13 @@ export class Room {
       isLeader: false,
     };
     this.players.push(player);
+    this.lastActivityAt = Date.now();
     return player;
   }
 
   removePlayer(id: string) {
     this.players = this.players.filter((p) => p.id !== id);
+    this.lastActivityAt = Date.now();
   }
 
   getPlayer(id: string) {
@@ -86,6 +93,7 @@ export class Room {
     const player = this.getPlayerByPlayerId(playerId);
     if (player) {
       player.id = newSocketId;
+      this.lastActivityAt = Date.now();
       return true;
     }
     return false;
@@ -101,6 +109,7 @@ export class Room {
     this.phase = "TEAM_SELECTION";
     this.currentLeaderIndex = Math.floor(Math.random() * this.players.length);
     this.updateLeader();
+    this.lastActivityAt = Date.now();
 
     return true;
   }
@@ -123,6 +132,7 @@ export class Room {
   private updateLeader() {
     this.players.forEach((p) => (p.isLeader = false));
     this.players[this.currentLeaderIndex].isLeader = true;
+    this.lastActivityAt = Date.now();
   }
 
   nextTurn() {
@@ -189,6 +199,7 @@ export class Room {
 
     this.selectedTeam = playerIds;
     this.phase = "VOTE";
+    this.lastActivityAt = Date.now();
     return true;
   }
 
@@ -196,6 +207,7 @@ export class Room {
     const playerId = this.getPlayerIdFromSocket(socketId);
     if (!playerId) return;
     this.votes.set(playerId, approve);
+    this.lastActivityAt = Date.now();
   }
 
   tallyVotes(): {
@@ -240,6 +252,8 @@ export class Room {
 
     this.votes.clear();
 
+    this.lastActivityAt = Date.now();
+
     return resultDetails;
   }
 
@@ -249,6 +263,7 @@ export class Room {
 
     if (!this.selectedTeam.includes(playerId)) return false;
     this.missionActions.set(playerId, success);
+    this.lastActivityAt = Date.now();
     return true;
   }
 

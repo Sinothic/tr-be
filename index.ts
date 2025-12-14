@@ -46,9 +46,17 @@ app.get("/api/expansions", (req, res) => {
 });
 
 // API endpoint to get open rooms (LOBBY phase only)
+const ROOM_STALE_MINUTES = process.env.ROOM_STALE_MINUTES ? parseInt(process.env.ROOM_STALE_MINUTES, 10) : 10;
+const ROOM_STALE_MS = ROOM_STALE_MINUTES * 60 * 1000;
+
+function isRoomStale(room: any) {
+  if (!room || !room.lastActivityAt) return false;
+  return Date.now() - room.lastActivityAt > ROOM_STALE_MS;
+}
+
 app.get("/api/rooms", (req, res) => {
   const openRooms = Array.from(gameManager.rooms.values())
-    .filter(room => room.phase === "LOBBY")
+    .filter(room => room.phase === "LOBBY" && !isRoomStale(room))
     .map(room => ({
       id: room.id,
       playerCount: room.players.length,
@@ -57,6 +65,18 @@ app.get("/api/rooms", (req, res) => {
 
   res.json(openRooms);
 });
+
+// Helper to return open rooms payload (used by API and socket emits)
+function getOpenRooms() {
+  return Array.from(gameManager.rooms.values())
+    .filter(room => room.phase === "LOBBY" && !isRoomStale(room))
+    .map(room => ({
+      id: room.id,
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+    }));
+}
+
 
 // Debug endpoint to fill room with bots
 app.post("/debug/fill-room/:roomId", (req, res) => {
@@ -198,7 +218,7 @@ io.on("connection", (socket) => {
         }`
       );
       // Broadcast room list update
-      io.emit("room_list_update");
+      io.emit("room_list_update", getOpenRooms());
     }
   );
 
@@ -279,7 +299,7 @@ io.on("connection", (socket) => {
       //   }, 2000); // Increased delay to ensure client navigation is complete
       // }
       // Broadcast room list update
-      io.emit("room_list_update");
+      io.emit("room_list_update", getOpenRooms());
     }
   );
 
@@ -333,7 +353,7 @@ io.on("connection", (socket) => {
           console.log(`Player ${nickname} (playerId: ${player.playerId}) joined room ${roomId}`);
           
           // Broadcast room list update
-          io.emit("room_list_update");
+          io.emit("room_list_update", getOpenRooms());
 
           // Auto-start game if in debug mode (minPlayers < 5) and enough players
           // Removed auto-start logic as per user request. Game will require manual start.
@@ -437,7 +457,7 @@ io.on("connection", (socket) => {
       console.log(`Game started in room ${roomId}`);
       
       // Broadcast room list update (room no longer in LOBBY)
-      io.emit("room_list_update");
+      io.emit("room_list_update", getOpenRooms());
     }
   });
 
@@ -627,7 +647,7 @@ io.on("connection", (socket) => {
           );
           
           // Broadcast room list update
-          io.emit("room_list_update");
+          io.emit("room_list_update", getOpenRooms());
         }
         disconnectTimeouts.delete(socket.id);
       }, PLAYER_RECONNECT_TIMEOUT_SECONDS * 1000); // Convert seconds to milliseconds
