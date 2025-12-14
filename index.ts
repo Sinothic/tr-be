@@ -45,6 +45,19 @@ app.get("/api/expansions", (req, res) => {
   res.json(expansions);
 });
 
+// API endpoint to get open rooms (LOBBY phase only)
+app.get("/api/rooms", (req, res) => {
+  const openRooms = Array.from(gameManager.rooms.values())
+    .filter(room => room.phase === "LOBBY")
+    .map(room => ({
+      id: room.id,
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+    }));
+
+  res.json(openRooms);
+});
+
 // Debug endpoint to fill room with bots
 app.post("/debug/fill-room/:roomId", (req, res) => {
   const { roomId } = req.params;
@@ -184,6 +197,8 @@ io.on("connection", (socket) => {
         `Room created: ${room.id} by ${nickname} (playerId: ${player.playerId}) with expansions: ${expansions?.join(", ") || "none"
         }`
       );
+      // Broadcast room list update
+      io.emit("room_list_update");
     }
   );
 
@@ -263,6 +278,8 @@ io.on("connection", (socket) => {
       //     }
       //   }, 2000); // Increased delay to ensure client navigation is complete
       // }
+      // Broadcast room list update
+      io.emit("room_list_update");
     }
   );
 
@@ -314,6 +331,9 @@ io.on("connection", (socket) => {
           // Notify all players about the new player
           io.to(roomId).emit("player_joined", { players: room.players });
           console.log(`Player ${nickname} (playerId: ${player.playerId}) joined room ${roomId}`);
+          
+          // Broadcast room list update
+          io.emit("room_list_update");
 
           // Auto-start game if in debug mode (minPlayers < 5) and enough players
           // Removed auto-start logic as per user request. Game will require manual start.
@@ -415,6 +435,9 @@ io.on("connection", (socket) => {
         })),
       });
       console.log(`Game started in room ${roomId}`);
+      
+      // Broadcast room list update (room no longer in LOBBY)
+      io.emit("room_list_update");
     }
   });
 
@@ -602,6 +625,9 @@ io.on("connection", (socket) => {
           console.log(
             `Player ${disconnectedPlayer.nickname} (playerId: ${disconnectedPlayer.playerId}) removed from room ${playerRoom.id} after disconnect timeout`
           );
+          
+          // Broadcast room list update
+          io.emit("room_list_update");
         }
         disconnectTimeouts.delete(socket.id);
       }, PLAYER_RECONNECT_TIMEOUT_SECONDS * 1000); // Convert seconds to milliseconds
