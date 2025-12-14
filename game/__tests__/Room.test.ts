@@ -111,10 +111,14 @@ describe('Room', () => {
     const assassin = room.getPlayer('socket-1');
     if (assassin) assassin.specialRole = 'ASSASSIN';
 
-    const result = room.handleAssassination(merlin.id);
-    expect(result.merlinId).toBe(merlin.id);
-    expect(result.success).toBe(true);
-    expect(room.phase).toBe('GAME_OVER');
+    if (merlin) {
+      const result = room.handleAssassination(merlin.id);
+      expect(result.merlinId).toBe(merlin.id);
+      expect(result.success).toBe(true);
+      expect(room.phase).toBe('GAME_OVER');
+    } else {
+      expect.fail('Merlin player not found for test');
+    }
   });
 
   it('getGameState hides spies from resistance players', async () => {
