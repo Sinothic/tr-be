@@ -90,16 +90,12 @@ describe('Room core behaviors', () => {
     room.submitVote('s4', false);
     room.submitVote('s5', false);
 
-    const prevFailed = room.failedMissions;
-    const prevMissionIndex = room.currentMissionIndex;
-
     const res = room.tallyVotes();
     expect(res.penaltyApplied).toBe(true);
-    expect(room.failedMissions).toBe(prevFailed + 1);
-    expect(room.voteRejections).toBe(0);
-    // When penalty applied and no game over, mission index increments
-    expect(room.currentMissionIndex).toBe(prevMissionIndex + 1);
-    expect(room.phase).toBe('TEAM_SELECTION');
+    // After 5 rejections, game should end immediately with Spy win
+    expect(room.phase).toBe('GAME_OVER');
+    expect(room.getWinner()).toBe('SPY');
+    expect(room.voteRejections).toBe(0); // Reset to 0 after game over
   });
 
   it('resolveMission counts fails and allows hook to override nextPhase', async () => {
