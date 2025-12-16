@@ -5,7 +5,7 @@ import { AVAILABLE_EXPANSIONS } from "./expansions";
 export class GameManager {
   rooms: Map<string, Room> = new Map();
 
-  createRoom(minPlayers?: number, expansions?: string[]): Room {
+  createRoom(minPlayers?: number, expansions?: string[], io?: any): Room {
     const roomId = this.generateRoomId();
 
     // Create a new HookManager for this room (isolated from other rooms)
@@ -13,7 +13,7 @@ export class GameManager {
 
     // Install expansions for this room BEFORE creating the room
     if (expansions && expansions.length > 0) {
-      this.installExpansions(expansions, roomHookManager);
+      this.installExpansions(expansions, roomHookManager, io);
     }
 
     const room = new Room(roomId, minPlayers, expansions, roomHookManager);

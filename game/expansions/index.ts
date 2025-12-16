@@ -1,5 +1,6 @@
 import { MerlinAssassinExpansion } from './merlin-assassin'
 import { BlindSpiesExpansion } from './blind-spies'
+import { InquisidorExpansion } from './inquisidor'
 
 /**
  * Central registry of all available expansions
@@ -9,6 +10,7 @@ import { BlindSpiesExpansion } from './blind-spies'
 export const AVAILABLE_EXPANSIONS = {
     'merlin-assassin': MerlinAssassinExpansion,
     'blind-spies': BlindSpiesExpansion,
+    'inquisidor': InquisidorExpansion,
 }
 
 /**

@@ -204,7 +204,8 @@ io.on("connection", (socket) => {
   socket.on(
     "create_room",
     ({ nickname, expansions, playerId }: { nickname: string; expansions?: string[]; playerId?: string }) => {
-      const room = gameManager.createRoom(DEBUG_MIN_PLAYERS, expansions);
+      const room = gameManager.createRoom(DEBUG_MIN_PLAYERS, expansions, io);
+      (socket as any).room = room;
       const player = room.addPlayer(socket.id, nickname, playerId);
       socket.join(room.id);
       socket.emit("room_created", {
@@ -236,7 +237,8 @@ io.on("connection", (socket) => {
       expansions?: string[];
       playerId?: string;
     }) => {
-      const room = gameManager.createRoom(minPlayers, expansions);
+      const room = gameManager.createRoom(minPlayers, expansions, io);
+      (socket as any).room = room;
       const player = room.addPlayer(socket.id, nickname, playerId);
       socket.join(room.id);
       socket.emit("room_created", {
@@ -308,6 +310,7 @@ io.on("connection", (socket) => {
     async ({ roomId, nickname, playerId }: { roomId: string; nickname: string; playerId?: string }) => {
       const room = gameManager.getRoom(roomId);
       if (room) {
+        (socket as any).room = room;
         let existingPlayer = null;
 
         // First, try to find by playerId if provided
@@ -351,7 +354,7 @@ io.on("connection", (socket) => {
           // Notify all players about the new player
           io.to(roomId).emit("player_joined", { players: room.players });
           console.log(`Player ${nickname} (playerId: ${player.playerId}) joined room ${roomId}`);
-          
+
           // Broadcast room list update
           io.emit("room_list_update", getOpenRooms());
 
@@ -455,7 +458,7 @@ io.on("connection", (socket) => {
         })),
       });
       console.log(`Game started in room ${roomId}`);
-      
+
       // Broadcast room list update (room no longer in LOBBY)
       io.emit("room_list_update", getOpenRooms());
     }
@@ -645,7 +648,7 @@ io.on("connection", (socket) => {
           console.log(
             `Player ${disconnectedPlayer.nickname} (playerId: ${disconnectedPlayer.playerId}) removed from room ${playerRoom.id} after disconnect timeout`
           );
-          
+
           // Broadcast room list update
           io.emit("room_list_update", getOpenRooms());
         }
