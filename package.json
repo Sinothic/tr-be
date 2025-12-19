@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "nodemon index.ts",
     "start": "ts-node index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "vitest run e2e --dir e2e",
+    "test:integration": "vitest run tests"
   },
   "keywords": [],
   "author": "",

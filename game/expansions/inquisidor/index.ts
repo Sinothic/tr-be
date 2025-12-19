@@ -245,6 +245,108 @@ export const InquisidorExpansion: ExpansionPlugin = {
         console.log('[Inquisidor] Expansion installed successfully')
     },
 
+    registerSocketHandlers(socket: any, room: any, io: any) {
+        //  Handle investigation
+        socket.on('inquisitor:investigate', ({ targetId }: { targetId: string }) => {
+            if (!room || !room.inquisitorState) {
+                console.error('[Inquisidor] Investigation failed: no room or inquisitor state')
+                return
+            }
+
+            const investigator = room.players.find((p: any) => p.id === socket.id)
+            if (!investigator) {
+                console.error('[Inquisidor] Investigation failed: investigator not found')
+                return
+            }
+
+            if (room.inquisitorState.tokenHolder !== investigator.playerId) {
+                console.error(`[Inquisidor] ${investigator.nickname} is not the token holder`)
+                socket.emit('error', { message: 'Você não possui o token de Inquisidor' })
+                return
+            }
+
+            const target = room.players.find((p: any) => p.id === targetId)
+            if (!target) {
+                console.error('[Inquisidor] Target player not found')
+                return
+            }
+
+            if (target.playerId === investigator.playerId) {
+                console.error('[Inquisidor] Cannot investigate self')
+                socket.emit('error', { message: 'Você não pode investigar a si mesmo' })
+                return
+            }
+
+            if (room.inquisitorState.lastInvestigated === target.playerId) {
+                console.error('[Inquisidor] Cannot investigate same player consecutively')
+                socket.emit('error', { message: 'Você não pode investigar o mesmo jogador duas vezes seguidas' })
+                return
+            }
+
+            const investigationResult = {
+                targetId: target.id,
+                targetNickname: target.nickname,
+                role: target.role,
+                specialRole: target.specialRole || null
+            }
+
+            console.log(`[Inquisidor] ${investigator.nickname} investigated ${target.nickname}`)
+            socket.emit('inquisitor:investigation-result', investigationResult)
+
+            room.inquisitorState.tokenHolder = target.playerId
+            room.inquisitorState.lastInvestigated = target.playerId
+            room.inquisitorState.investigationHistory.push({
+                investigator: investigator.playerId,
+                target: target.playerId,
+                timestamp: Date.now()
+            })
+
+            io.to(room.id).emit('inquisitor:token-passed', {
+                newTokenHolder: target.id,
+                investigatedPlayer: target.id
+            })
+
+            console.log(`[Inquisidor] Token passed from ${investigator.nickname} to ${target.nickname}`)
+        })
+
+        // Handle end of investigation phase
+        socket.on('inquisitor:end-investigation', () => {
+            if (room && room.phase === 'INQUISITOR_INVESTIGATION') {
+                if (room.succeededMissions >= 3) {
+                    room.phase = 'GAME_OVER'
+                    io.to(room.id).emit('game_over', {
+                        winner: 'RESISTANCE',
+                        players: room.players.map((p: any) => ({
+                            id: p.id,
+                            nickname: p.nickname,
+                            role: p.role,
+                            specialRole: p.specialRole || null,
+                        }))
+                    })
+                } else if (room.failedMissions >= 3) {
+                    room.phase = 'GAME_OVER'
+                    io.to(room.id).emit('game_over', {
+                        winner: 'SPY',
+                        players: room.players.map((p: any) => ({
+                            id: p.id,
+                            nickname: p.nickname,
+                            role: p.role,
+                            specialRole: p.specialRole || null,
+                        }))
+                    })
+                } else {
+                    room.nextTurn()
+                    io.to(room.id).emit('phase_change', { phase: 'TEAM_SELECTION' })
+                    io.to(room.id).emit('new_leader', {
+                        currentLeader: room.players[room.currentLeaderIndex],
+                        missionIndex: room.currentMissionIndex,
+                        missionSize: room.getCurrentMissionSize()
+                    })
+                }
+            }
+        })
+    },
+
     uninstall(hookManager: HookManager) {
         console.log('[Inquisidor] Uninstalling expansion...')
         // Hooks are automatically cleared by HookManager

@@ -25,6 +25,15 @@ export interface ExpansionPlugin {
      * Clean up hooks and state
      */
     uninstall(hookManager: HookManager): void;
+
+    /**
+     * Register socket event handlers for this expansion
+     * Called when a socket needs to interact with a room that has this expansion
+     * @param socket - The socket.io socket instance
+     * @param room - The room instance
+     * @param io - The socket.io server instance
+     */
+    registerSocketHandlers?(socket: any, room: any, io: any): void;
 }
 
 /**

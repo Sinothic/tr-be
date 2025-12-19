@@ -198,6 +198,26 @@ const DEBUG_MIN_PLAYERS = process.env.DEBUG_MIN_PLAYERS
   ? parseInt(process.env.DEBUG_MIN_PLAYERS, 10)
   : undefined;
 
+/**
+ * Register socket event handlers for all expansions active in a room
+ * Called once when a socket joins a room to set up expansion-specific handlers
+ */
+function registerExpansionHandlers(socket: any, room: any, io: any): void {
+  if (!room || !room.expansions || room.expansions.length === 0) return;
+
+  room.expansions.forEach((expansionId: string) => {
+    const expansion = AVAILABLE_EXPANSIONS[expansionId as keyof typeof AVAILABLE_EXPANSIONS];
+    if (expansion && expansion.registerSocketHandlers) {
+      try {
+        expansion.registerSocketHandlers(socket, room, io);
+        console.log(`[ExpansionHandlers] Registered ${expansionId} handlers for socket ${socket.id}`);
+      } catch (error) {
+        console.error(`[ExpansionHandlers] Error registering ${expansionId} handlers:`, error);
+      }
+    }
+  });
+}
+
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
 
@@ -206,6 +226,7 @@ io.on("connection", (socket) => {
     ({ nickname, expansions, playerId }: { nickname: string; expansions?: string[]; playerId?: string }) => {
       const room = gameManager.createRoom(DEBUG_MIN_PLAYERS, expansions, io);
       (socket as any).room = room;
+      registerExpansionHandlers(socket, room, io);
       const player = room.addPlayer(socket.id, nickname, playerId);
       socket.join(room.id);
       socket.emit("room_created", {
@@ -239,6 +260,7 @@ io.on("connection", (socket) => {
     }) => {
       const room = gameManager.createRoom(minPlayers, expansions, io);
       (socket as any).room = room;
+      registerExpansionHandlers(socket, room, io);
       const player = room.addPlayer(socket.id, nickname, playerId);
       socket.join(room.id);
       socket.emit("room_created", {
@@ -327,6 +349,7 @@ io.on("connection", (socket) => {
           // Reconnect existing player with new socket ID
           existingPlayer.id = socket.id;
           socket.join(roomId);
+          registerExpansionHandlers(socket, room, io);
 
           // Send full game state to the reconnected player
           const gameState = await room.getGameState(existingPlayer.playerId);
@@ -342,6 +365,7 @@ io.on("connection", (socket) => {
           // New player joining
           const player = room.addPlayer(socket.id, nickname, playerId);
           socket.join(roomId);
+          registerExpansionHandlers(socket, room, io);
 
           // Send room info to the new player
           socket.emit("joined_room", {
@@ -413,6 +437,25 @@ io.on("connection", (socket) => {
       }
     }
   );
+
+  socket.on("get_game_state", async (roomId: string) => {
+    const room = gameManager.getRoom(roomId);
+    if (!room) {
+      socket.emit("error", "Room not found");
+      return;
+    }
+
+    const player = room.players.find((p) => p.id === socket.id);
+    if (player) {
+      const gameState = await room.getGameState(player.playerId);
+      socket.emit("game_state_sync", gameState);
+    } else {
+      // If player not found by socket.id, try to see if they are in the room list but disconnected?
+      // For now, if socket.id isn't in room, we can't safely return private info.
+      // But for E2E tests, the socket should be joined.
+      socket.emit("error", "Player not in room");
+    }
+  });
 
   socket.on("start_game", async (roomId: string) => {
     const room = gameManager.getRoom(roomId);
