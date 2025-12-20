@@ -290,7 +290,11 @@ export class Room {
     const votesSocketIds = new Map<string, boolean>();
     this.missionActions.forEach((action, playerId) => {
       const sid = this.getSocketIdFromPlayerId(playerId);
-      if (sid) votesSocketIds.set(sid, action);
+      if (sid) {
+        votesSocketIds.set(sid, action);
+      } else {
+        votesSocketIds.set(playerId, action);
+      }
     });
 
     this.missionActions.clear();
