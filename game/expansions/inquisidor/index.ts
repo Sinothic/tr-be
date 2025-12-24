@@ -118,7 +118,10 @@ export const InquisidorExpansion: ExpansionPlugin = {
                     }
 
                     // 3. Identify Target (Socket ID -> Player Object -> UUID)
-                    const target = room.players.find((p: any) => p.id === targetId)
+                    const target = room.players.find((p: any) => p.id === targetId || p.playerId === targetId)
+                    if (target) {
+                        console.log(`[Inquisidor] Investigate target resolved: ${target.nickname} (${target.playerId} -> ${target.id})`)
+                    }
                     if (!target) {
                         console.error('[Inquisidor] Target player not found')
                         return
@@ -265,7 +268,10 @@ export const InquisidorExpansion: ExpansionPlugin = {
                 return
             }
 
-            const target = room.players.find((p: any) => p.id === targetId)
+            const target = room.players.find((p: any) => p.id === targetId || p.playerId === targetId)
+            if (target) {
+                console.log(`[Inquisidor] Investigate target resolved: ${target.nickname} (${target.playerId} -> ${target.id})`)
+            }
             if (!target) {
                 console.error('[Inquisidor] Target player not found')
                 return

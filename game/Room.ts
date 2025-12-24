@@ -401,6 +401,7 @@ export class Room {
       phase: this.phase,
       players: this.players.map((p) => ({
         id: p.id,
+        playerId: p.playerId,
         nickname: p.nickname,
         isLeader: p.isLeader,
       })),

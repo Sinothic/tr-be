@@ -120,7 +120,8 @@ export class GameClient {
      */
     selectTeam(playerIds: string[]): void {
         if (!this.roomId) throw new Error('Not in a room');
-        this.socket.emit('select_team', { roomId: this.roomId, selectedPlayers: playerIds });
+        console.log(`[E2E][ServerGameClient] ${this.nickname} emitting select_team payload:`, { roomId: this.roomId, playerIds });
+        this.socket.emit('select_team', { roomId: this.roomId, playerIds: playerIds });
     }
 
     /**

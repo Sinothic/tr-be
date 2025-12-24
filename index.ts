@@ -34,6 +34,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+app.use(express.json());
+
 // API endpoint to get available expansions
 app.get("/api/expansions", (req, res) => {
   const expansions = Object.entries(AVAILABLE_EXPANSIONS).map(([id, expansion]) => ({
@@ -509,14 +511,73 @@ io.on("connection", (socket) => {
 
   socket.on(
     "select_team",
-    ({ roomId, playerIds }: { roomId: string; playerIds: string[] }) => {
-      const room = gameManager.getRoom(roomId);
-      if (room && room.selectTeam(playerIds)) {
-        io.to(roomId).emit("team_selected", {
-          selectedTeam: playerIds,
-          phase: room.phase,
-        });
-        console.log(`Team selected in room ${roomId}`);
+    (payload: { roomId: string; playerIds?: string[]; selectedPlayers?: string[] }) => {
+      try {
+        const { roomId } = payload;
+        console.log(`[select_team] received from socket ${socket.id} payload:`, payload);
+        const room = gameManager.getRoom(roomId as string);
+        if (!room) {
+          console.warn(`[select_team] Room not found: ${roomId}`);
+          return;
+        }
+
+        // Accept either 'playerIds' (UUIDs), 'selectedPlayers', or socket IDs.
+        const providedIds = Array.isArray(payload.playerIds)
+          ? payload.playerIds
+          : Array.isArray(payload.selectedPlayers)
+          ? payload.selectedPlayers
+          : undefined;
+
+        if (!Array.isArray(providedIds)) {
+          console.warn(`[select_team] Invalid or missing payload for room ${roomId}:`, {
+            playerIds: payload.playerIds,
+            selectedPlayers: payload.selectedPlayers,
+          });
+          return;
+        }
+
+        // Map provided ids -> socket IDs. Support both socket-id or playerId input.
+        const resolvedSocketIds = providedIds
+          .map((id) => {
+            // Try treat as socketId first
+            const bySocket = room.getPlayer(id);
+            if (bySocket) return bySocket.id; // already a socket id, normalize
+            // Try treat as playerId (UUID)
+            const byPlayerId = room.getPlayerByPlayerId(id);
+            if (byPlayerId) return byPlayerId.id; // map to current socket id
+            return null;
+          })
+          .filter((x): x is string => !!x);
+
+        if (resolvedSocketIds.length !== providedIds.length) {
+          console.warn(
+            `[select_team] Some provided IDs could not be resolved for room ${roomId}`,
+            { provided: providedIds, resolvedSocketIds }
+          );
+        }
+
+        if (resolvedSocketIds.length === 0) {
+          console.warn(`[select_team] No valid IDs provided for room ${roomId}`);
+          return;
+        }
+
+        // Call Room.selectTeam with socket IDs (current Room implementation expects socket IDs)
+        if (room.selectTeam(resolvedSocketIds)) {
+          // Emit both socket IDs and internal playerIds for clients' convenience
+          io.to(roomId).emit("team_selected", {
+            selectedTeam: room.getSelectedTeamSocketIds(),
+            selectedTeamSocketIds: room.getSelectedTeamSocketIds(),
+            selectedTeamPlayerIds: room.selectedTeam,
+            phase: room.phase,
+          });
+          console.log(`[select_team] Team selected in room ${roomId}`);
+        } else {
+          console.warn(
+            `[select_team] room.selectTeam returned false for room ${roomId} with ${resolvedSocketIds.length} members`
+          );
+        }
+      } catch (err) {
+        console.error(`[select_team] Unhandled error for room ${ (payload as any).roomId }:`, err);
       }
     }
   );
