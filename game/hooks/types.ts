@@ -12,7 +12,8 @@ export type GameHook =
     | 'mission:resolve'      // Triggered after mission is resolved
     | 'player:join'          // Triggered when player joins room
     | 'player:disconnect'    // Triggered when player disconnects
-    | 'state:sync';          // Triggered when syncing game state to player
+    | 'state:sync'           // Triggered when syncing game state to player
+    | 'game:reset';          // Triggered when game is reset
 
 /**
  * Context passed to hook callbacks

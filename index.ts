@@ -459,6 +459,53 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("restart_game", async (roomId: string) => {
+    const room = gameManager.getRoom(roomId);
+    if (!room) return;
+
+    // Reset game state
+    await room.resetGame();
+
+    // Send role info to each player privately (include specialRole and spies visibility for MERLIN)
+    const spiesList = room.players
+      .filter((p) => p.role === "SPY")
+      .map((p) => ({ id: p.id, nickname: p.nickname }));
+
+    room.players.forEach((player) => {
+      const payload: any = {
+        role: player.role,
+        specialRole: player.specialRole || null,
+      };
+
+      if (player.specialRole === "MERLIN") {
+        payload.spies = spiesList;
+      }
+
+      if (player.role === "SPY") {
+        payload.spies = spiesList;
+      }
+
+      io.to(player.id).emit("role_assigned", payload);
+    });
+
+    // Broadcast game state to all players in room
+    io.to(roomId).emit("game_started", {
+      phase: room.phase,
+      currentLeader: room.players[room.currentLeaderIndex],
+      missionIndex: room.currentMissionIndex,
+      missionSize: room.getCurrentMissionSize(),
+      players: room.players.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        isLeader: p.isLeader,
+      })),
+    });
+    console.log(`Game restarted in room ${roomId}`);
+
+    // Broadcast room list update
+    io.emit("room_list_update", getOpenRooms());
+  });
+
   socket.on("start_game", async (roomId: string) => {
     const room = gameManager.getRoom(roomId);
     if (room && await room.startGame()) {

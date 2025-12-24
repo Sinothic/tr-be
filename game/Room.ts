@@ -442,6 +442,33 @@ export class Room {
     return hookResult.state || state;
   }
 
+  async resetGame() {
+    // Reset counters and history
+    this.phase = "TEAM_SELECTION"; // Will be overridden by startGame/assignRoles logic usually, but here we reset
+    this.currentMissionIndex = 0;
+    this.failedMissions = 0;
+    this.succeededMissions = 0;
+    this.missionHistory = [];
+    this.voteRejections = 0;
+    this.selectedTeam = [];
+    this.votes.clear();
+    this.missionActions.clear();
+    this.assassinationTarget = null;
+
+    // Reset player states but keep players
+    this.players.forEach(p => {
+      p.isLeader = false;
+      p.role = undefined;
+      p.specialRole = undefined;
+    });
+
+    // Notify expansions to reset
+    await this.hookManager.trigger('game:reset', { room: this });
+
+    // Start game again (assign roles, pick leader, etc)
+    await this.startGame();
+  }
+
   getWinner(): "RESISTANCE" | "SPY" | null {
     if (this.phase !== "GAME_OVER") return null;
 
