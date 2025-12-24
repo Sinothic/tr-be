@@ -46,6 +46,7 @@ export class Room {
   currentMissionIndex: number = 0;
   failedMissions: number = 0;
   succeededMissions: number = 0;
+  missionHistory: Array<{ success: boolean; failCount: number }> = [];
   assassinationTarget: string | null = null;
 
   // Mission configuration based on player count (standard Resistance rules)
@@ -286,6 +287,9 @@ export class Room {
       this.failedMissions++;
     }
 
+    // Track mission result in history
+    this.missionHistory.push({ success, failCount });
+
     // Convert keys to Socket IDs for the return value
     const votesSocketIds = new Map<string, boolean>();
     this.missionActions.forEach((action, playerId) => {
@@ -412,6 +416,7 @@ export class Room {
       voteRejections: this.voteRejections,
       succeededMissions: this.succeededMissions,
       failedMissions: this.failedMissions,
+      missionHistory: this.missionHistory,
       gameWinner: this.getWinner(),
       // Player-specific info
       myRole: player.role,

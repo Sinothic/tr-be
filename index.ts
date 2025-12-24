@@ -525,8 +525,8 @@ io.on("connection", (socket) => {
         const providedIds = Array.isArray(payload.playerIds)
           ? payload.playerIds
           : Array.isArray(payload.selectedPlayers)
-          ? payload.selectedPlayers
-          : undefined;
+            ? payload.selectedPlayers
+            : undefined;
 
         if (!Array.isArray(providedIds)) {
           console.warn(`[select_team] Invalid or missing payload for room ${roomId}:`, {
@@ -577,7 +577,7 @@ io.on("connection", (socket) => {
           );
         }
       } catch (err) {
-        console.error(`[select_team] Unhandled error for room ${ (payload as any).roomId }:`, err);
+        console.error(`[select_team] Unhandled error for room ${(payload as any).roomId}:`, err);
       }
     }
   );
@@ -626,6 +626,7 @@ io.on("connection", (socket) => {
                 failedMissions: room.failedMissions,
                 phase: room.phase,
                 missionIndex: room.currentMissionIndex,
+                missionHistory: room.missionHistory,
               });
 
               // If the game ended due to the penalty, emit game_over
@@ -680,6 +681,7 @@ io.on("connection", (socket) => {
             succeededMissions: room.succeededMissions,
             failedMissions: room.failedMissions,
             phase: room.phase,
+            missionHistory: room.missionHistory,
           });
 
           if (room.phase === "TEAM_SELECTION") {
